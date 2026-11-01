@@ -265,6 +265,7 @@ describe('contract shapes', () => {
       service: 'Rideppy API',
       version: '0.0.1',
       timestamp: new Date().toISOString(),
+      database: 'up',
     };
     const error: ApiErrorResponse = {
       success: false,

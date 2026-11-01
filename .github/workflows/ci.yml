@@ -44,3 +44,68 @@ jobs:
 
       - name: E2E tests
         run: pnpm test:e2e
+
+  database:
+    name: Database migrations + integration tests (PostGIS)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: rideppy
+          POSTGRES_PASSWORD: rideppy
+          POSTGRES_DB: rideppy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rideppy"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://rideppy:rideppy@localhost:5432/rideppy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        # Version is read automatically from package.json "packageManager"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: pnpm --filter api exec prisma migrate deploy
+
+      - name: Seed development data
+        run: pnpm --filter api exec prisma db seed
+
+      - name: Build
+        run: pnpm build
+
+      - name: Database integration tests
+        run: pnpm --filter api test:db
+
+      - name: Boot API and verify /health reports the database up
+        run: |
+          node apps/api/dist/main.js &
+          API_PID=$!
+          for i in $(seq 1 30); do
+            BODY=$(curl -sf http://127.0.0.1:3100/health || true)
+            if echo "$BODY" | grep -q '"database":"up"'; then
+              echo "/health OK: $BODY"
+              kill $API_PID
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "/health never reported the database as up. Last body: $BODY"
+          kill $API_PID
+          exit 1

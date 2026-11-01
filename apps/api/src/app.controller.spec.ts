@@ -1,18 +1,38 @@
+import { HttpException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { HealthResponse } from '@rideppy/contracts';
+import type { HealthResponse } from '@rideppy/contracts';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
 describe('AppController', () => {
   let appController: AppController;
+  let appService: {
+    getHello: jest.Mock;
+    pingDatabase: jest.Mock;
+    getHealth: jest.Mock;
+  };
+
+  const healthyPayload: HealthResponse = {
+    status: 'ok',
+    service: 'Rideppy API',
+    version: '0.0.1',
+    timestamp: '2026-11-01T10:00:00.000Z',
+    database: 'up',
+  };
 
   beforeEach(async () => {
-    const app: TestingModule = await Test.createTestingModule({
+    appService = {
+      getHello: jest.fn().mockReturnValue('Hello World!'),
+      pingDatabase: jest.fn().mockResolvedValue(true),
+      getHealth: jest.fn().mockResolvedValue(healthyPayload),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService],
+      providers: [{ provide: AppService, useValue: appService }],
     }).compile();
 
-    appController = app.get<AppController>(AppController);
+    appController = module.get<AppController>(AppController);
   });
 
   describe('root', () => {
@@ -22,13 +42,32 @@ describe('AppController', () => {
   });
 
   describe('health', () => {
-    it('returns the shared HealthResponse contract', () => {
-      const health: HealthResponse = appController.getHealth();
+    it('returns the shared HealthResponse contract when the database is up', async () => {
+      await expect(appController.getHealth()).resolves.toEqual(healthyPayload);
+      expect(appService.pingDatabase).toHaveBeenCalledTimes(1);
+      expect(appService.getHealth).toHaveBeenCalledWith('0.0.1');
+    });
 
-      expect(health.status).toBe('ok');
-      expect(health.service).toBe('Rideppy API');
-      expect(health.version).toBe('0.0.1');
-      expect(new Date(health.timestamp).toString()).not.toBe('Invalid Date');
+    it('throws 503 with the error envelope data when the database is down', async () => {
+      appService.pingDatabase.mockResolvedValue(false);
+      appService.getHealth.mockResolvedValue({
+        ...healthyPayload,
+        database: 'down',
+      });
+
+      const failure = (await appController
+        .getHealth()
+        .catch((error: unknown) => error)) as HttpException;
+      expect(failure).toBeInstanceOf(HttpException);
+      expect(failure.getStatus()).toBe(503);
+      // Body consumed by AllExceptionsFilter -> ApiErrorResponse envelope.
+      expect(failure.getResponse()).toEqual({
+        statusCode: 503,
+        error: 'Service Unavailable',
+        message: 'Database unreachable',
+      });
+      // The health payload must never be returned while the DB is down.
+      expect(appService.getHealth).not.toHaveBeenCalled();
     });
   });
 });

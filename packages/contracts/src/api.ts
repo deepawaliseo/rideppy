@@ -1,8 +1,17 @@
 import { ISO8601String } from './common';
 
+/** Connectivity state of one backing service, as reported by /health. */
+export type DatabaseHealth = 'up' | 'down';
+
 /**
  * Payload of `GET /health`.
  * Must stay in sync with `AppService.getHealth()` in the API.
+ *
+ * HTTP status semantics:
+ * - 200 + this payload when every reported dependency is up.
+ * - 503 + ApiErrorResponse envelope when a critical dependency (the
+ *   database) is unreachable — the database is never reported healthy
+ *   when it cannot answer a round-trip query.
  */
 export interface HealthResponse {
   status: 'ok';
@@ -10,6 +19,8 @@ export interface HealthResponse {
   version: string;
   /** ISO-8601 timestamp of the moment the response was built. */
   timestamp: ISO8601String;
+  /** Real PostgreSQL connectivity probe (SELECT 1) result. */
+  database: DatabaseHealth;
 }
 
 /**

@@ -1,0 +1,273 @@
+// Rideppy — Prisma schema (PostgreSQL 16 + PostGIS)
+//
+// Conventions:
+// - Money amounts are INTEGER paise (1 INR = 100 paise), field names end in
+//   `Minor`. Mirrors @rideppy/contracts.
+// - Tables are @@map()'ed to lowercase plural names so raw SQL stays readable.
+// - Latitudes/longitudes are double precision; the matching geography(Point,
+//   4326) columns are GENERATED ALWAYS AS (see the initial migration's PostGIS
+//   section) and declared here as Unsupported so Prisma never drops them.
+//   They are queryable only via $queryRaw — by design.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums — must stay in sync with @rideppy/contracts
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  CUSTOMER
+  DRIVER
+  ADMIN
+}
+
+enum AccountStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum KycStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum VehicleType {
+  BIKE
+  AUTO
+}
+
+enum VehicleStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  WALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum RideStatus {
+  REQUESTED
+  SEARCHING
+  ASSIGNED
+  ARRIVING
+  ARRIVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum RideCancelReason {
+  CUSTOMER_CANCELLED
+  DRIVER_CANCELLED
+  SYSTEM_TIMEOUT
+  OPERATIONS_CANCELLED
+  PAYMENT_FAILED
+}
+
+enum Currency {
+  INR
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+/// Identity record shared by every human actor of the platform.
+/// Role semantics live in the 1:1 profile tables (Customer/Driver).
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  phone        String        @unique
+  fullName     String
+  email        String?
+  role         UserRole      @default(CUSTOMER)
+  status       AccountStatus @default(PENDING_VERIFICATION)
+  passwordHash String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  customer Customer?
+  driver   Driver?
+
+  @@index([status])
+  @@map("users")
+}
+
+/// Ride-requesting profile (1:1 with User).
+model Customer {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  rides    Ride[]
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("customers")
+}
+
+/// Ride-fulfilling profile (1:1 with User). Matchable only when KYC is
+/// APPROVED, at least one Vehicle is ACTIVE and isOnline is true.
+model Driver {
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String    @unique @db.Uuid
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kycStatus            KycStatus @default(PENDING)
+  drivingLicenseNumber String?
+  isOnline             Boolean   @default(false)
+  /// Average rating 0..5; null until the first rated trip.
+  rating               Float?
+  ratingCount          Int       @default(0)
+  completedTrips       Int       @default(0)
+
+  vehicles Vehicle[]
+  rides    Ride[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isOnline, kycStatus])
+  @@map("drivers")
+}
+
+/// A driver-registered vehicle used to fulfill rides.
+model Vehicle {
+  id                 String        @id @default(uuid()) @db.Uuid
+  driverId           String        @db.Uuid
+  driver             Driver        @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  type               VehicleType
+  make               String
+  model              String
+  registrationNumber String        @unique
+  insuranceExpiry    DateTime?
+  status             VehicleStatus @default(PENDING_VERIFICATION)
+  /// Vehicle used for new ride matching while the driver is online.
+  isDefault          Boolean       @default(false)
+
+  rides Ride[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([driverId])
+  @@map("vehicles")
+}
+
+/// The full lifecycle record of one bike-taxi ride.
+/// REQUESTED -> SEARCHING -> ASSIGNED -> ARRIVING -> ARRIVED -> IN_PROGRESS ->
+/// COMPLETED; any pre-IN_PROGRESS state may transition to CANCELLED.
+model Ride {
+  id     String     @id @default(uuid()) @db.Uuid
+  status RideStatus @default(REQUESTED)
+
+  customerId String   @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  driverId   String?  @db.Uuid
+  driver     Driver?  @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  vehicleId  String?  @db.Uuid
+  vehicle    Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  vehicleType VehicleType
+
+  pickupLat     Float @db.DoublePrecision
+  pickupLng     Float @db.DoublePrecision
+  pickupAddress String?
+  /// GENERATED ALWAYS AS geography(Point, 4326) — raw SQL only.
+  pickupGeo     Unsupported("geography(Point, 4326)")?
+  dropLat       Float @db.DoublePrecision
+  dropLng       Float @db.DoublePrecision
+  dropAddress   String?
+  /// GENERATED ALWAYS AS geography(Point, 4326) — raw SQL only.
+  dropGeo       Unsupported("geography(Point, 4326)")?
+
+  estimatedDistanceKm Float
+  actualDistanceKm    Float?
+
+  // Fare quote captured at request time (FareEstimate in contracts).
+  baseFareMinor       Int
+  distanceFareMinor   Int
+  surgeMultiplier     Float    @default(1)
+  estimatedTotalMinor Int
+  quotedAt            DateTime
+  /// Final charged amount; null until completion.
+  finalFareMinor      Int?
+
+  paymentMethod PaymentMethod
+  payment       Payment?
+
+  /// 4-digit start OTP confirmed by the customer before IN_PROGRESS.
+  startOtp String?
+
+  requestedAt  DateTime          @default(now())
+  assignedAt   DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason RideCancelReason?
+  cancelledBy  UserRole?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([customerId])
+  @@index([driverId])
+  @@index([requestedAt])
+  @@index([pickupGeo], type: Gist)
+  @@index([dropGeo], type: Gist)
+  @@map("rides")
+}
+
+/// Money movement for one ride (1:1).
+/// Invariant: driverEarningsMinor === amountMinor - platformFeeMinor.
+/// Platform fee: FARE_RULES in @rideppy/contracts — ₹2 per eligible km,
+/// capped ₹10 per ride, waived for a driver's first 30 days.
+model Payment {
+  id         String        @id @default(uuid()) @db.Uuid
+  rideId     String        @unique @db.Uuid
+  ride       Ride          @relation(fields: [rideId], references: [id], onDelete: Restrict)
+  customerId String        @db.Uuid
+  customer   Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  method     PaymentMethod
+  status     PaymentStatus @default(PENDING)
+  currency   Currency      @default(INR)
+
+  amountMinor         Int
+  platformFeeMinor    Int
+  driverEarningsMinor Int
+
+  /// Payment service provider reference (e.g. Razorpay id); null for cash.
+  providerRef String?
+  paidAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([status])
+  @@map("payments")
+}

@@ -6,6 +6,7 @@
     "lint": {},
     "typecheck": {"dependsOn": ["^typecheck"]},
     "test": {"dependsOn": ["^build"]},
-    "test:e2e": {"dependsOn": ["^build"]}
+    "test:e2e": {"dependsOn": ["^build"]},
+    "test:db": {"dependsOn": ["^build"]}
   }
 }

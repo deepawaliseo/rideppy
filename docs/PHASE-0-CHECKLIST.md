@@ -53,13 +53,20 @@ mobile testing on a physical Android phone.
 - [x] `typecheck` script in every package; Turbo + CI run it
 
 ## WP-5 — PostgreSQL + PostGIS + Prisma (native Windows, no Docker)
-- [ ] PostgreSQL 16 service running; `psql` on PATH
-- [ ] PostGIS installed (Stack Builder) and `CREATE EXTENSION postgis` verified
-- [ ] `rideppy` role + database created with least privilege
-- [ ] Prisma installed; `schema.prisma` on `postgresql` provider
-- [ ] Baseline migration applied; Prisma Studio opens
-- [ ] Raw-SQL geo-query pattern documented (Prisma does not model PostGIS types)
-- [ ] `/health` performs a real DB ping and fails honestly when DB is down
+- [ ] (Windows) PostgreSQL 16 service running; `psql` on PATH — docs/DATABASE-SETUP.md §1
+- [ ] (Windows) PostGIS installed (Stack Builder) and `CREATE EXTENSION postgis` verified — §2
+- [ ] (Windows) `rideppy` role + database created with least privilege — §3
+- [x] Prisma 6.19 installed (`prisma` + `@prisma/client`, CJS-safe for NestJS 11 / Node 22);
+      `schema.prisma` on `postgresql` provider — User/Customer/Driver/Vehicle/Ride/Payment
+- [x] Versioned migration `20261101000000_init` applied; Prisma Studio opens (`pnpm --filter api db:studio`)
+- [x] PostGIS in migration: `CREATE EXTENSION`, `geography(Point, 4326)` GENERATED
+      columns on `rides`, GiST indexes; verified against real PostGIS 3.6.2 (PGlite)
+- [x] Raw-SQL geo-query pattern documented (docs/DATABASE-SETUP.md §7); Prisma models geo
+      columns as `Unsupported` so they are never dropped by future migrations
+- [x] `/health` performs a real `SELECT 1` DB ping and returns 503 + error envelope when
+      the DB is down (boot-without-DB verified in sandbox; DB-up verified in CI + Windows)
+- [x] Money stored as integer paise (Int columns, `*Minor`); seed script idempotent (upserts)
+- [ ] (Windows) Integration suite against live DB: `pnpm --filter api test:db` — §6
 
 ## WP-6 — Final gate (on the Windows PC)
 - [ ] `pnpm install → build → lint → test → test:e2e` all green locally

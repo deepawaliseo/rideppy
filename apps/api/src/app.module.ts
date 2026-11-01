@@ -16,6 +16,7 @@ import {
   throttleConfig,
 } from './config/configuration';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { AllExceptionsFilter } from './common/filters/http-exception.filter';
         mapConfig,
       ],
     }),
+    PrismaModule,
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({

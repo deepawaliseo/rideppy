@@ -4,6 +4,8 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { createPrismaMock } from './prisma-mock';
 
 /**
  * Rate limiting e2e: overrides throttle env BEFORE the module compiles so
@@ -18,7 +20,10 @@ describe('Throttling (e2e)', () => {
 
     const moduleFixture = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue(createPrismaMock())
+      .compile();
     app = moduleFixture.createNestApplication();
     configureApp(app);
     await app.init();
