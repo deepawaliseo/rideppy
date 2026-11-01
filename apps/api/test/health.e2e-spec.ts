@@ -1,19 +1,12 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { ApiErrorResponse, HealthResponse } from '@rideppy/contracts';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 
-type HealthBody = { status: string; service: string; timestamp: string };
 type OpenApiBody = { info: { title: string }; openapi: string };
-type ErrorEnvelope = {
-  success: boolean;
-  statusCode: number;
-  error: string;
-  path: string;
-  timestamp: string;
-};
 
 describe('Health, Swagger, error envelope and security headers (e2e)', () => {
   let app: INestApplication<App>;
@@ -36,9 +29,10 @@ describe('Health, Swagger, error envelope and security headers (e2e)', () => {
       .get('/health')
       .expect(200)
       .then(({ body }) => {
-        const health = body as HealthBody;
+        const health = body as HealthResponse;
         expect(health.status).toBe('ok');
         expect(health.service).toBe('Rideppy API');
+        expect(health.version).toBe('0.0.1');
         expect(typeof health.timestamp).toBe('string');
       });
   });
@@ -60,7 +54,7 @@ describe('Health, Swagger, error envelope and security headers (e2e)', () => {
       .get('/definitely-not-here')
       .expect(404)
       .then(({ body }) => {
-        const envelope = body as ErrorEnvelope;
+        const envelope = body as ApiErrorResponse;
         expect(envelope.success).toBe(false);
         expect(envelope.statusCode).toBe(404);
         expect(envelope.path).toBe('/definitely-not-here');

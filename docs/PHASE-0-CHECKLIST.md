@@ -39,10 +39,18 @@ mobile testing on a physical Android phone.
 - [x] E2E: health, Swagger doc, error envelope, helmet headers, CORS, throttling 429
 - [x] Build, lint, unit + e2e all green
 
-## WP-4 — Shared packages wiring
-- [ ] `@rideppy/contracts` imported by the API via tsconfig paths
-- [ ] Shared tsconfig package created; strictness increased
-- [ ] Contracts types used by at least one API surface (health response)
+## WP-4 — Shared packages wiring ✅
+- [x] `@rideppy/contracts` imported by the API via tsconfig paths
+- [x] Shared tsconfig package created (`@rideppy/tsconfig`: `base` + `nestjs`); full `strict` mode on
+- [x] Contracts types used by at least one API surface (health response + error envelope)
+- [x] Domain contracts: Customer, Driver, Vehicle, Ride, RideStatus, Location,
+      FareEstimate, Payment, HealthResponse / ApiErrorResponse / Paginated
+- [x] Runtime value lists (`RIDE_STATUSES`, `USER_ROLES`, ...) + `isOneOf` guards;
+      compile-time exhaustiveness proofs in the contract test suite
+- [x] Money as integer paise (`toMinor` / `fromMinor`); locked fee model encoded
+      in `FARE_RULES` (₹2/eligible km, ₹10 cap, 30-day waiver)
+- [x] Contracts build to CJS `dist/` with declarations + `exports` map; framework-independent
+- [x] `typecheck` script in every package; Turbo + CI run it
 
 ## WP-5 — PostgreSQL + PostGIS + Prisma (native Windows, no Docker)
 - [ ] PostgreSQL 16 service running; `psql` on PATH

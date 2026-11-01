@@ -1,5 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
+import type { HealthResponse } from '@rideppy/contracts';
 import { AppService } from './app.service';
+
+/** API version reported by GET /health (single source: package.json version). */
+const API_VERSION = '0.0.1';
 
 @Controller()
 export class AppController {
@@ -11,12 +15,7 @@ export class AppController {
   }
 
   @Get('health')
-  getHealth() {
-    return {
-      service: 'Rideppy API',
-      status: 'ok',
-      version: '0.0.1',
-      timestamp: new Date().toISOString(),
-    };
+  getHealth(): HealthResponse {
+    return this.appService.getHealth(API_VERSION);
   }
 }
