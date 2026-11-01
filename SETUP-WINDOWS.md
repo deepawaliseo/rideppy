@@ -30,9 +30,11 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-Replace `CHANGE_ME_TO_A_STRONG_LOCAL_PASSWORD` with a strong local password in
-**both** lines. `PORT=3100` is the API port everywhere. `.env` is git-ignored —
-never commit it.
+Replace every `CHANGE_ME_...` placeholder with a strong local value. `PORT=3100`
+is the API port everywhere. With `NODE_ENV=development` the API boots using the
+template defaults; with `NODE_ENV=production` startup **fails** unless
+`JWT_SECRET` and `DATABASE_URL` are set to strong, non-placeholder values
+(validated at boot with zod). `.env` is git-ignored — never commit it.
 
 ## 4. Run the API
 
