@@ -1,24 +1,47 @@
-# Bike Taxi Platform — Phase 0 Starter
+# Rideppy Platform — Phase 0 Foundation
 
-This is a **foundation starter**, not a complete or production-ready application. The four app folders are created by the official scaffolding commands in `SETUP-WINDOWS.md`. No code has been run on your PC.
+Monorepo for the **Rideppy** bike taxi platform (pnpm + Turborepo).
 
-## Confirmed stack
+> **Status:** foundation phase. The Customer app, Driver app and Admin dashboard
+> are built in their own phases (approved scope decision).
 
-- Separate Customer and Driver: Expo + React Native + TypeScript
-- API: NestJS + TypeScript
-- Admin: Next.js + TypeScript
-- PostgreSQL + PostGIS, Redis, Socket.IO (future API integration)
-- MapLibre (added during maps phase), payment gateway and SMS provider (later phases)
-- Docker Compose for local infrastructure; Kubernetes deferred
+## Stack
 
-## Fee model
+| Layer | Technology | Location |
+|---|---|---|
+| API | NestJS + TypeScript, port `3100` | `apps/api` |
+| Shared types | `@rideppy/contracts` | `packages/contracts` |
+| Customer app | Expo + React Native | later phase |
+| Driver app | Expo + React Native | later phase |
+| Admin dashboard | Next.js | later phase |
+| Database | PostgreSQL 16 + PostGIS (native Windows install) | WP-5 |
+| Jobs/realtime | Redis + BullMQ, Socket.IO | ride phases |
 
-First 30 days ₹0; thereafter ₹2/km capped at ₹10 per eligible completed ride, charged to driver earnings, subject to final rules and legal review.
+`compose.yaml` remains available as an **optional** Postgres+PostGIS/Redis
+reference but is not used on the development PC (no Docker/WSL2).
 
-## Start
+## Quick start (Windows PowerShell)
 
-1. Read `SETUP-WINDOWS.md`.
-2. Copy `.env.example` to `.env` and replace placeholder password in both values.
-3. Run `docker compose up -d`.
-4. Generate apps with the documented commands and then install workspace dependencies.
-5. Follow `docs/PHASE-0-CHECKLIST.md`.
+```powershell
+cd C:\Projects\rideppy-platform
+corepack enable
+corepack pnpm install
+Copy-Item .env.example .env   # then edit: set a strong local password
+corepack pnpm --dir apps/api start:dev
+```
+
+Verify: `http://127.0.0.1:3100/health` returns JSON with `"status":"ok"`.
+
+Full setup guide: `SETUP-WINDOWS.md` · Acceptance checklist: `docs/PHASE-0-CHECKLIST.md`.
+
+## Fee model (implemented in a later phase)
+
+First 30 days ₹0 platform fee per driver; thereafter ₹2 per eligible kilometre,
+capped at ₹10 per completed ride, charged against driver earnings — subject to
+final rules and legal review.
+
+## Development rules
+
+- Never commit `.env`, keys or credentials (`.gitignore` + CI structure).
+- Work on feature branches; `main` is updated via reviewed pull requests.
+- CI runs install → build → lint → unit + e2e tests on every push and PR.
