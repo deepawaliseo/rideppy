@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Rideppy Phase 0 — repeatable Windows verification gate (WP-6).
 
