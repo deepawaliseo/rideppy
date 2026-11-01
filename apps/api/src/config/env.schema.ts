@@ -85,6 +85,11 @@ export function assertProductionSafety(env: Env): string[] {
         'DATABASE_URL must point to the real production database in production',
       );
     }
+    if (env.CORS_ORIGIN.trim() === '*') {
+      problems.push(
+        'CORS_ORIGIN must be an explicit origin list in production (no "*")',
+      );
+    }
   }
   return problems;
 }

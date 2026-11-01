@@ -28,12 +28,16 @@ mobile testing on a physical Android phone.
 - [x] Unit tests for valid, invalid and production-unsafe environments (23 tests)
 - [x] Build, lint, unit + e2e green; API boots on 3100; bad env exits with readable error
 
-## WP-3 — API hardening
-- [ ] Helmet, CORS (from `CORS_ORIGIN`), rate limiting (Throttler) enabled
-- [ ] Global `ValidationPipe`, consistent error envelope, 404 catch-all
-- [ ] Swagger at `/docs`, toggleable via `SWAGGER_ENABLED`, bearer-auth scheme
-- [ ] Graceful shutdown hooks
-- [ ] `/health` e2e test added
+## WP-3 — API hardening ✅
+- [x] Helmet security headers always on (`x-content-type-options`, `x-frame-options`, ...)
+- [x] CORS from `cors.origins` config; `*` works in dev, refused in production (env-validated)
+- [x] Global rate limiting via `@nestjs/throttler` (`THROTTLE_TTL_MS` / `THROTTLE_LIMIT`)
+- [x] Global `ValidationPipe`: `whitelist`, `transform`, `forbidNonWhitelisted`
+- [x] `AllExceptionsFilter`: one consistent error envelope; unknown errors never leak internals
+- [x] Swagger at `/docs` (+ `/docs-json`), toggleable via `SWAGGER_ENABLED`, bearer-auth scheme
+- [x] Graceful shutdown hooks (`enableShutdownHooks`)
+- [x] E2E: health, Swagger doc, error envelope, helmet headers, CORS, throttling 429
+- [x] Build, lint, unit + e2e all green
 
 ## WP-4 — Shared packages wiring
 - [ ] `@rideppy/contracts` imported by the API via tsconfig paths

@@ -43,6 +43,7 @@ describe('validateEnv (valid configurations)', () => {
       JWT_SECRET: 'p'.repeat(48),
       DATABASE_URL:
         'postgresql://rideppy:strong-password@db.prod.internal:5432/rideppy',
+      CORS_ORIGIN: 'https://admin.rideppy.example,https://app.rideppy.example',
     });
     expect(env.NODE_ENV).toBe('production');
     expect(env.JWT_SECRET).toHaveLength(48);
@@ -131,5 +132,17 @@ describe('validateEnv (production safety)', () => {
         JWT_SECRET: 'x'.repeat(48),
       }),
     ).toThrow(/DATABASE_URL/);
+  });
+
+  it('rejects the wildcard CORS_ORIGIN in production', () => {
+    expect(() =>
+      validateEnv({
+        ...validDevEnv,
+        NODE_ENV: 'production',
+        JWT_SECRET: 'x'.repeat(48),
+        DATABASE_URL:
+          'postgresql://rideppy:strong-password@db.prod.internal:5432/rideppy',
+      }),
+    ).toThrow(/CORS_ORIGIN/);
   });
 });
