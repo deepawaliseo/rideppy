@@ -18,11 +18,15 @@ mobile testing on a physical Android phone.
 - [x] Minimal GitHub Actions CI added (install, build, lint, unit + e2e)
 - [x] Build, lint, unit tests, e2e tests and live `/health` boot verified
 
-## WP-2 — Configuration layer
-- [ ] `@nestjs/config` wired with a validated environment schema (zod)
-- [ ] `.env.example` completed: `CORS_ORIGIN`, `SWAGGER_ENABLED`, `JWT_*`,
-      `THROTTLE_*`, `NODE_ENV`, MapLibre provider keys (`MAP_PROVIDER`,
-      `MAP_STYLE_URL`, `MAP_API_KEY`) — provider stays configurable
+## WP-2 — Configuration layer ✅
+- [x] `@nestjs/config` wired globally (`ConfigModule.forRoot`) with zod validation
+- [x] `apps/api/src/config/env.schema.ts` — full env schema; invalid config refuses to boot
+- [x] Production safety: boot fails on placeholder/short `JWT_SECRET` or default `DATABASE_URL`
+- [x] Namespaced config factories: `app`, `db`, `redis`, `jwt`, `cors`, `throttle`, `swagger`, `map`
+- [x] `.env.example` completed: `DATABASE_URL`, `REDIS_URL`, `JWT_*`, `CORS_ORIGIN`,
+      `THROTTLE_*`, `SWAGGER_*`, `MAP_PROVIDER` / `MAP_STYLE_URL` / `MAP_API_KEY`, `PORT=3100`
+- [x] Unit tests for valid, invalid and production-unsafe environments (23 tests)
+- [x] Build, lint, unit + e2e green; API boots on 3100; bad env exits with readable error
 
 ## WP-3 — API hardening
 - [ ] Helmet, CORS (from `CORS_ORIGIN`), rate limiting (Throttler) enabled

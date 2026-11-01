@@ -22,8 +22,15 @@ monorepo. Runs on **port 3100** (`PORT` env var).
 
 Swagger docs at `/docs` arrive in WP-3.
 
+## Configuration
+
+- Environment is validated at boot with zod (`src/config/env.schema.ts`) — an
+  invalid or production-unsafe configuration refuses to start with a readable error.
+- Structured namespaces via `ConfigService`: `app.*`, `db.*`, `redis.*`, `jwt.*`,
+  `cors.*`, `throttle.*`, `swagger.*`, `map.*` (`src/config/configuration.ts`).
+- Every variable and its safe placeholder: `/.env.example`.
+
 ## Notes
 
-- Environment is loaded from the monorepo root `.env` (see `/.env.example`).
-- `POST /health` responses will use types from `@rideppy/contracts` (WP-4).
+- `PORT=3100` is read from validated config (`app.port`).
 - Never commit `.env` or real credentials.
