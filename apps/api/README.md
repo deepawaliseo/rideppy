@@ -19,8 +19,23 @@ monorepo. Runs on **port 3100** (`PORT` env var).
 |---|---|
 | `GET /` | Hello world (starter) |
 | `GET /health` | Service health JSON — DB ping arrives in WP-5 |
+| `GET /docs` | Swagger UI (toggle via `SWAGGER_ENABLED`) |
+| `GET /docs-json` | OpenAPI 3 document |
 
-Swagger docs at `/docs` arrive in WP-3.
+## Security & HTTP behavior (WP-3)
+
+- Helmet security headers on every response (`apps/api/src/app.setup.ts`).
+- CORS from `CORS_ORIGIN`: `*` in development, explicit origin list required in
+  production (enforced by env validation at boot).
+- Global rate limiting via `@nestjs/throttler` — configure with `THROTTLE_TTL_MS`
+  and `THROTTLE_LIMIT`; exceeded requests get HTTP 429 in the error envelope.
+- Global `ValidationPipe` (`whitelist`, `transform`, `forbidNonWhitelisted`).
+- Every error uses one consistent JSON envelope
+  (`src/common/filters/http-exception.filter.ts`); unknown exceptions never
+  leak internals to clients.
+- Graceful shutdown on SIGTERM/SIGINT (`enableShutdownHooks`).
+- `main.ts` and the e2e tests share `configureApp()` from `app.setup.ts`, so
+  tested behavior equals production behavior.
 
 ## Configuration
 
