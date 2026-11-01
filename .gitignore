@@ -1,0 +1,24 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.expo/
+dist/
+.next/
+.turbo/
+coverage/
+*.log
+
+# Rideppy local secrets and generated files
+node_modules/
+.env
+.env.*
+!.env.example
+!.env.*.example
+dist/
+build/
+.next/
+.expo/
+coverage/
+*.log
+*.bak
