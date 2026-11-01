@@ -4,6 +4,7 @@ import {
   dbConfig,
   jwtConfig,
   mapConfig,
+  otpConfig,
   redisConfig,
   swaggerConfig,
   throttleConfig,
@@ -40,9 +41,43 @@ describe('configuration factories', () => {
     expect(redisConfig()).toEqual({ url: 'redis://localhost:6379' });
   });
 
-  it('jwtConfig exposes secret and expiry', () => {
+  it('jwtConfig exposes secret, access expiry and refresh TTL', () => {
     process.env.JWT_SECRET = 'test-secret';
-    expect(jwtConfig()).toEqual({ secret: 'test-secret', expiresIn: '1d' });
+    process.env.JWT_EXPIRES_IN = '10m';
+    process.env.JWT_REFRESH_TTL_DAYS = '14';
+    expect(jwtConfig()).toEqual({
+      secret: 'test-secret',
+      expiresIn: '10m',
+      refreshTtlDays: 14,
+    });
+  });
+
+  it('jwtConfig defaults to a short access token and 30-day refresh window', () => {
+    delete process.env.JWT_EXPIRES_IN;
+    delete process.env.JWT_REFRESH_TTL_DAYS;
+    process.env.JWT_SECRET = 'test-secret';
+    expect(jwtConfig()).toEqual({
+      secret: 'test-secret',
+      expiresIn: '15m',
+      refreshTtlDays: 30,
+    });
+  });
+
+  it('otpConfig exposes the delivery provider and abuse limits', () => {
+    process.env.OTP_PROVIDER = 'console';
+    process.env.OTP_CODE_TTL_SECONDS = '120';
+    process.env.OTP_RESEND_COOLDOWN_SECONDS = '30';
+    process.env.OTP_MAX_ATTEMPTS = '3';
+    process.env.OTP_MAX_ACTIVE_PER_PHONE = '2';
+    process.env.OTP_HOURLY_REQUEST_LIMIT = '6';
+    expect(otpConfig()).toEqual({
+      provider: 'console',
+      codeTtlSeconds: 120,
+      resendCooldownSeconds: 30,
+      maxAttempts: 3,
+      maxActivePerPhone: 2,
+      hourlyRequestLimit: 6,
+    });
   });
 
   it('corsConfig parses comma-separated origins', () => {
@@ -60,7 +95,28 @@ describe('configuration factories', () => {
   it('throttleConfig coerces numeric strings', () => {
     process.env.THROTTLE_TTL_MS = '30000';
     process.env.THROTTLE_LIMIT = '50';
-    expect(throttleConfig()).toEqual({ ttlMs: 30000, limit: 50 });
+    expect(throttleConfig()).toEqual({
+      ttlMs: 30000,
+      limit: 50,
+      otpRequestLimit: 5,
+      otpVerifyLimit: 10,
+      refreshLimit: 20,
+    });
+  });
+
+  it('throttleConfig exposes the auth-surface limits with safe defaults', () => {
+    delete process.env.THROTTLE_OTP_REQUEST_LIMIT;
+    delete process.env.THROTTLE_OTP_VERIFY_LIMIT;
+    delete process.env.THROTTLE_REFRESH_LIMIT;
+    process.env.THROTTLE_TTL_MS = '60000';
+    process.env.THROTTLE_LIMIT = '100';
+    expect(throttleConfig()).toEqual({
+      ttlMs: 60_000,
+      limit: 100,
+      otpRequestLimit: 5,
+      otpVerifyLimit: 10,
+      refreshLimit: 20,
+    });
   });
 
   it('swaggerConfig parses the enabled flag strictly (only "true" enables)', () => {

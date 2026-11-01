@@ -34,9 +34,30 @@ export const envSchema = z.object({
     .regex(/^redis:\/\//, 'REDIS_URL must start with redis://')
     .default('redis://localhost:6379'),
 
-  // --- Auth (used from the auth phase onwards) -------------------------------
+  // --- Auth (WP-1: phone + OTP authentication) --------------------------------
   JWT_SECRET: z.string().min(1).default(DEV_JWT_SECRET),
-  JWT_EXPIRES_IN: z.string().min(1).default('1d'),
+  // Access-token lifetime. SHORT by default (15 min): refresh tokens carry
+  // the session. '1d' is still accepted explicitly if an operator wants it.
+  JWT_EXPIRES_IN: z.string().min(1).default('15m'),
+  // Refresh-token session lifetime in days (rotation window).
+  JWT_REFRESH_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+
+  // --- OTP delivery (WP-1) ----------------------------------------------------
+  // Provider abstraction: 'console' prints the OTP to the API log and is for
+  // development/tests ONLY. Real SMS providers (twilio, msg91) are declared
+  // here, but the sender factory REFUSES TO BOOT until their implementation
+  // and credentials exist — the API never pretends an SMS was sent.
+  OTP_PROVIDER: z.enum(['console', 'twilio', 'msg91']).default('console'),
+  OTP_CODE_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  OTP_RESEND_COOLDOWN_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(15)
+    .max(600)
+    .default(60),
+  OTP_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
+  OTP_MAX_ACTIVE_PER_PHONE: z.coerce.number().int().min(1).max(10).default(3),
+  OTP_HOURLY_REQUEST_LIMIT: z.coerce.number().int().min(1).max(60).default(10),
 
   // --- HTTP surface -----------------------------------------------------------
   // '*' or a comma-separated origin list, e.g. "http://localhost:8081,https://admin.local"
@@ -45,6 +66,10 @@ export const envSchema = z.object({
   // --- Rate limiting -----------------------------------------------------------
   THROTTLE_TTL_MS: z.coerce.number().int().positive().default(60_000),
   THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
+  // Stricter per-IP limits for the auth surface (OTP abuse protection).
+  THROTTLE_OTP_REQUEST_LIMIT: z.coerce.number().int().positive().default(5),
+  THROTTLE_OTP_VERIFY_LIMIT: z.coerce.number().int().positive().default(10),
+  THROTTLE_REFRESH_LIMIT: z.coerce.number().int().positive().default(20),
 
   // --- Swagger ------------------------------------------------------------------
   SWAGGER_ENABLED: z.enum(['true', 'false']).default('true'),
@@ -88,6 +113,11 @@ export function assertProductionSafety(env: Env): string[] {
     if (env.CORS_ORIGIN.trim() === '*') {
       problems.push(
         'CORS_ORIGIN must be an explicit origin list in production (no "*")',
+      );
+    }
+    if (env.OTP_PROVIDER === 'console') {
+      problems.push(
+        'OTP_PROVIDER=console only prints OTP codes to the server log and is NOT real SMS delivery — configure a real SMS provider in production',
       );
     }
   }

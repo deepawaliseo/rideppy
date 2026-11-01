@@ -32,4 +32,20 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // Test files intentionally work with `any`-typed doubles (prisma fakes,
+    // jest mocks) and dynamic shapes; the strict unsafe-access rules target
+    // production code. require-await fires on synchronous mock
+    // implementations that must return promises; unbound-method fires on
+    // detached jest mock methods. Explicit `any` stays linted everywhere.
+    files: ['test/**/*.ts', '**/*.spec.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/require-await': 'off',
+      '@typescript-eslint/unbound-method': 'off',
+    },
+  },
 );

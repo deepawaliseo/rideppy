@@ -79,6 +79,13 @@ enum RideStatus {
   CANCELLED
 }
 
+/// What an OTP was issued for. LOGIN covers the self-service phone + OTP
+/// authentication flow (Phase 1 / WP-1); more purposes join when their
+/// feature phase lands. Must stay in sync with @rideppy/contracts.
+enum OtpPurpose {
+  LOGIN
+}
+
 enum RideCancelReason {
   CUSTOMER_CANCELLED
   DRIVER_CANCELLED
@@ -110,6 +117,8 @@ model User {
 
   customer Customer?
   driver   Driver?
+
+  refreshTokens RefreshToken[]
 
   @@index([status])
   @@map("users")
@@ -270,4 +279,55 @@ model Payment {
   @@index([customerId])
   @@index([status])
   @@map("payments")
+}
+
+/// A hashed one-time password issued to a phone number. Rows exist BEFORE an
+/// account does (first-time login creates the User only at verify time), so
+/// OTP codes reference the phone — not the user.
+/// - `codeHash` is scrypt(salt, code): plaintext OTPs are never persisted.
+/// - `attempts` enforces the per-code attempt limit; a code is consumed on
+///   successful verification and expires by `expiresAt` otherwise.
+/// - requestIp supports abuse forensics (rate limiting itself is env-driven).
+model OtpCode {
+  id         String     @id @default(uuid()) @db.Uuid
+  phone      String
+  purpose    OtpPurpose @default(LOGIN)
+  codeHash   String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int        @default(0)
+  requestIp  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([phone, purpose, createdAt])
+  @@map("otp_codes")
+}
+
+/// A hashed refresh token session for one user.
+/// - `tokenHash` is SHA-256(token): the raw token is shown to the client
+///   exactly once and never stored.
+/// - Rotation: on refresh the parent is marked revoked (replacedById -> child)
+///   and a fresh token in the same `familyId` is issued.
+/// - Reuse detection: presenting an ALREADY-REVOKED token revokes the whole
+///   family (probable token theft) and forces a new login.
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId     String    @db.Uuid
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  /// Rotation chain: the child token created when this token was used.
+  replacedById String?   @db.Uuid
+  userAgent    String?
+  ip           String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
 }
