@@ -5,16 +5,23 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { createPrismaMock } from './prisma-mock';
 
 type OpenApiBody = { info: { title: string }; openapi: string };
 
 describe('Health, Swagger, error envelope and security headers (e2e)', () => {
   let app: INestApplication<App>;
+  let prismaMock: ReturnType<typeof createPrismaMock>;
 
   beforeAll(async () => {
+    prismaMock = createPrismaMock();
     const moduleFixture = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue(prismaMock)
+      .compile();
     app = moduleFixture.createNestApplication();
     configureApp(app);
     await app.init();
@@ -24,7 +31,7 @@ describe('Health, Swagger, error envelope and security headers (e2e)', () => {
     await app.close();
   });
 
-  it('/health returns the ok payload', () => {
+  it('/health returns the ok payload with the database up', () => {
     return request(app.getHttpServer())
       .get('/health')
       .expect(200)
@@ -33,8 +40,27 @@ describe('Health, Swagger, error envelope and security headers (e2e)', () => {
         expect(health.status).toBe('ok');
         expect(health.service).toBe('Rideppy API');
         expect(health.version).toBe('0.0.1');
+        expect(health.database).toBe('up');
         expect(typeof health.timestamp).toBe('string');
       });
+  });
+
+  it('/health returns 503 with the error envelope when the database is down', async () => {
+    prismaMock.ping.mockResolvedValue(false);
+    try {
+      const response = await request(app.getHttpServer())
+        .get('/health')
+        .expect(503);
+      const envelope = response.body as ApiErrorResponse;
+      expect(envelope.success).toBe(false);
+      expect(envelope.statusCode).toBe(503);
+      expect(envelope.error).toBe('Service Unavailable');
+      expect(envelope.message).toBe('Database unreachable');
+      expect(envelope.path).toBe('/health');
+      expect(typeof envelope.timestamp).toBe('string');
+    } finally {
+      prismaMock.ping.mockResolvedValue(true);
+    }
   });
 
   it('/docs serves the Swagger UI and /docs-json the OpenAPI document', () => {

@@ -18,9 +18,32 @@ monorepo. Runs on **port 3100** (`PORT` env var).
 | Route | Description |
 |---|---|
 | `GET /` | Hello world (starter) |
-| `GET /health` | Service health JSON (`HealthResponse` from `@rideppy/contracts`) — DB ping arrives in WP-5 |
+| `GET /health` | `200` + `HealthResponse` (from `@rideppy/contracts`) when the database answers a `SELECT 1`; `503` + error envelope (`Database unreachable`) otherwise — the DB is never reported healthy while disconnected |
 | `GET /docs` | Swagger UI (toggle via `SWAGGER_ENABLED`) |
 | `GET /docs-json` | OpenAPI 3 document |
+
+## Database (WP-5)
+
+- **Stack**: PostgreSQL 16 + PostGIS via Prisma 6 (`prisma` / `@prisma/client`, CJS-safe).
+- **Schema**: `prisma/schema.prisma` — User → 1:1 Customer/Driver profiles,
+  Vehicle, Ride (with `GENERATED ALWAYS AS geography(Point, 4326)` columns +
+  GiST indexes), Payment; money is integer paise (`*Minor` Int columns).
+- **Migrations**: `prisma/migrations/20261101000000_init` (versioned SQL;
+  the PostGIS hand-edits are documented in the file header).
+- **Service**: `src/prisma/PrismaService` (global) — connects on boot, never
+  crashes boot when the DB is down, disconnects on shutdown, powers the
+  `/health` ping.
+- **Windows setup**: see `docs/DATABASE-SETUP.md` (install, roles, `.env`,
+  migrate, seed, verify).
+
+### Database commands
+
+| Command | Purpose |
+|---|---|
+| `pnpm --filter api db:migrate` | Apply migrations (`prisma migrate deploy`) |
+| `pnpm --filter api exec prisma db seed` | Idempotent demo data (upserts only) |
+| `pnpm --filter api db:studio` | Prisma Studio GUI |
+| `pnpm --filter api test:db` | Integration tests against a live DB (auto-skip when unreachable) |
 
 ## Shared contracts (WP-4)
 

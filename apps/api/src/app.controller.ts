@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
 import type { HealthResponse } from '@rideppy/contracts';
 import { AppService } from './app.service';
 
@@ -14,8 +14,25 @@ export class AppController {
     return this.appService.getHello();
   }
 
+  /**
+   * Liveness + database readiness.
+   * - Database reachable  -> 200 + HealthResponse (database: 'up').
+   * - Database unreachable -> 503 + the shared ApiErrorResponse envelope.
+   * The database is never reported healthy when it cannot answer a query.
+   */
   @Get('health')
-  getHealth(): HealthResponse {
+  async getHealth(): Promise<HealthResponse> {
+    const databaseUp = await this.appService.pingDatabase();
+    if (!databaseUp) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+          error: 'Service Unavailable',
+          message: 'Database unreachable',
+        },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
     return this.appService.getHealth(API_VERSION);
   }
 }
