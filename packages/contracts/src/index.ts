@@ -9,6 +9,7 @@
 export * from './common';
 export * from './geo';
 export * from './user';
+export * from './auth';
 export * from './vehicle';
 export * from './payment';
 export * from './ride';

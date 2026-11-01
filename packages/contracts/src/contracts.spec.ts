@@ -9,6 +9,9 @@ import {
   fromMinor,
   HealthResponse,
   isOneOf,
+  isAuthRole,
+  isE164Phone,
+  isOtpPurpose,
   isPaymentMethod,
   isRideStatus,
   isUserRole,
@@ -157,6 +160,31 @@ describe('runtime guards', () => {
 
     expect(isPaymentMethod('UPI')).toBe(true);
     expect(isPaymentMethod('IOU')).toBe(false);
+  });
+
+  it('guards the auth role set (ADMIN never self-serviceable)', () => {
+    expect(isAuthRole('CUSTOMER')).toBe(true);
+    expect(isAuthRole('DRIVER')).toBe(true);
+    expect(isAuthRole('ADMIN')).toBe(false);
+    expect(isAuthRole('admin')).toBe(false);
+    expect(isAuthRole(undefined)).toBe(false);
+  });
+
+  it('guards the OTP purpose set', () => {
+    expect(isOtpPurpose('LOGIN')).toBe(true);
+    expect(isOtpPurpose('SIGNUP')).toBe(false);
+  });
+
+  it('validates E.164 phone numbers strictly', () => {
+    expect(isE164Phone('+919876543210')).toBe(true);
+    expect(isE164Phone('+12025550123')).toBe(true);
+    expect(isE164Phone('919876543210')).toBe(false); // missing +
+    expect(isE164Phone('++919876543210')).toBe(false);
+    expect(isE164Phone('+0919876543210')).toBe(false); // leading zero
+    expect(isE164Phone('+91')).toBe(false); // too short
+    expect(isE164Phone('+919876543210123456')).toBe(false); // > 15 digits
+    expect(isE164Phone('+91-9876543210')).toBe(false); // separator
+    expect(isE164Phone(919876543210)).toBe(false); // not a string
   });
 });
 

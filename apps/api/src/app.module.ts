@@ -11,12 +11,16 @@ import {
   dbConfig,
   jwtConfig,
   mapConfig,
+  otpConfig,
   redisConfig,
   swaggerConfig,
   throttleConfig,
 } from './config/configuration';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RolesGuard } from './auth/guards/roles.guard';
 
 @Module({
   imports: [
@@ -29,6 +33,7 @@ import { PrismaModule } from './prisma/prisma.module';
         dbConfig,
         redisConfig,
         jwtConfig,
+        otpConfig,
         corsConfig,
         throttleConfig,
         swaggerConfig,
@@ -36,6 +41,8 @@ import { PrismaModule } from './prisma/prisma.module';
       ],
     }),
     PrismaModule,
+    // WP-1: phone + OTP authentication (controller, services, OTP provider).
+    AuthModule,
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
@@ -64,6 +71,11 @@ import { PrismaModule } from './prisma/prisma.module';
     },
     // Global rate limiting (throttle.* config).
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // WP-1: global authentication + role authorization. ORDER MATTERS:
+    // throttle (per-IP) -> authenticate (JWT) -> authorize (roles). Every
+    // route is protected unless marked @Public (fail-closed posture).
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
     // One consistent JSON error envelope for every response path.
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],

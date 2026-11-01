@@ -1,10 +1,17 @@
 import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
 import type { HealthResponse } from '@rideppy/contracts';
 import { AppService } from './app.service';
+import { Public } from './auth/decorators/public.decorator';
 
 /** API version reported by GET /health (single source: package.json version). */
 const API_VERSION = '0.0.1';
 
+/**
+ * Infrastructure routes. Both are @Public: the global JwtAuthGuard (WP-1)
+ * protects everything by default, and liveness/root info must stay reachable
+ * without a token (uptime probes, smoke tests).
+ */
+@Public()
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}

@@ -7,6 +7,13 @@ const validDevEnv = {
   REDIS_URL: 'redis://localhost:6379',
   JWT_SECRET: DEV_JWT_SECRET,
   JWT_EXPIRES_IN: '1d',
+  JWT_REFRESH_TTL_DAYS: '30',
+  OTP_PROVIDER: 'console',
+  OTP_CODE_TTL_SECONDS: '300',
+  OTP_RESEND_COOLDOWN_SECONDS: '60',
+  OTP_MAX_ATTEMPTS: '5',
+  OTP_MAX_ACTIVE_PER_PHONE: '3',
+  OTP_HOURLY_REQUEST_LIMIT: '10',
   CORS_ORIGIN: '*',
   THROTTLE_TTL_MS: '60000',
   THROTTLE_LIMIT: '100',
@@ -32,6 +39,14 @@ describe('validateEnv (valid configurations)', () => {
     expect(env.NODE_ENV).toBe('development');
     expect(env.DATABASE_URL).toBe(DEV_DATABASE_URL);
     expect(env.JWT_SECRET).toBe(DEV_JWT_SECRET);
+    expect(env.JWT_EXPIRES_IN).toBe('15m');
+    expect(env.JWT_REFRESH_TTL_DAYS).toBe(30);
+    expect(env.OTP_PROVIDER).toBe('console');
+    expect(env.OTP_CODE_TTL_SECONDS).toBe(300);
+    expect(env.OTP_RESEND_COOLDOWN_SECONDS).toBe(60);
+    expect(env.OTP_MAX_ATTEMPTS).toBe(5);
+    expect(env.OTP_MAX_ACTIVE_PER_PHONE).toBe(3);
+    expect(env.OTP_HOURLY_REQUEST_LIMIT).toBe(10);
     expect(env.MAP_PROVIDER).toBe('none');
     expect(env.SWAGGER_ENABLED).toBe('true');
   });
@@ -44,9 +59,11 @@ describe('validateEnv (valid configurations)', () => {
       DATABASE_URL:
         'postgresql://rideppy:strong-password@db.prod.internal:5432/rideppy',
       CORS_ORIGIN: 'https://admin.rideppy.example,https://app.rideppy.example',
+      OTP_PROVIDER: 'twilio',
     });
     expect(env.NODE_ENV).toBe('production');
     expect(env.JWT_SECRET).toHaveLength(48);
+    expect(env.OTP_PROVIDER).toBe('twilio');
   });
 });
 
@@ -95,6 +112,24 @@ describe('validateEnv (invalid configurations)', () => {
       validateEnv({ ...validDevEnv, SWAGGER_ENABLED: 'yes' }),
     ).toThrow(/SWAGGER_ENABLED/);
   });
+
+  it('rejects an unknown OTP_PROVIDER value', () => {
+    expect(() =>
+      validateEnv({ ...validDevEnv, OTP_PROVIDER: 'smoke-signals' }),
+    ).toThrow(/OTP_PROVIDER/);
+  });
+
+  it('rejects non-numeric and out-of-range OTP tunables', () => {
+    expect(() =>
+      validateEnv({ ...validDevEnv, OTP_MAX_ATTEMPTS: 'many' }),
+    ).toThrow(/OTP_MAX_ATTEMPTS/);
+    expect(
+      () => validateEnv({ ...validDevEnv, OTP_CODE_TTL_SECONDS: '5' }), // below min 30
+    ).toThrow(/OTP_CODE_TTL_SECONDS/);
+    expect(
+      () => validateEnv({ ...validDevEnv, JWT_REFRESH_TTL_DAYS: '400' }), // max 365
+    ).toThrow(/JWT_REFRESH_TTL_DAYS/);
+  });
 });
 
 describe('validateEnv (production safety)', () => {
@@ -130,8 +165,22 @@ describe('validateEnv (production safety)', () => {
         ...validDevEnv,
         NODE_ENV: 'production',
         JWT_SECRET: 'x'.repeat(48),
+        OTP_PROVIDER: 'twilio',
       }),
     ).toThrow(/DATABASE_URL/);
+  });
+
+  it('rejects the console OTP provider in production (no pretend SMS delivery)', () => {
+    expect(() =>
+      validateEnv({
+        ...validDevEnv,
+        NODE_ENV: 'production',
+        JWT_SECRET: 'x'.repeat(48),
+        DATABASE_URL:
+          'postgresql://rideppy:strong-password@db.prod.internal:5432/rideppy',
+        CORS_ORIGIN: 'https://app.rideppy.example',
+      }),
+    ).toThrow(/OTP_PROVIDER/);
   });
 
   it('rejects the wildcard CORS_ORIGIN in production', () => {
@@ -142,6 +191,7 @@ describe('validateEnv (production safety)', () => {
         JWT_SECRET: 'x'.repeat(48),
         DATABASE_URL:
           'postgresql://rideppy:strong-password@db.prod.internal:5432/rideppy',
+        OTP_PROVIDER: 'twilio',
       }),
     ).toThrow(/CORS_ORIGIN/);
   });
