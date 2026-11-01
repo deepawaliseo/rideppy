@@ -1,73 +1,165 @@
 /**
- * Database integration tests — run against a REAL PostgreSQL 16 + PostGIS.
+ * Database integration tests — REAL PostgreSQL (16 or 18) + PostGIS.
  *
- * CI: runs in the `database` job with a postgis/postgis:16 service container.
- * Local: `pnpm --filter api test:db` with the database running (see
- * docs/DATABASE-SETUP.md). Every test self-skips when the database is
- * unreachable, so this file never fails a machine without a database.
+ * WP-6 two-mode gate (see test/db/global-setup.js):
+ *
+ * 1. `RIDEPPY_DB_REQUIRED=1` (set by scripts/verify.ps1 and CI) —
+ *    database verification is REQUIRED. If the database is unreachable,
+ *    every test FAILS explicitly with a clear error. A run in this mode
+ *    can never report skipped tests as database verification.
+ *
+ * 2. Without the flag (local dev / sandbox without a database) —
+ *    an unreachable database registers native `it.skip` tests. Skips are
+ *    reported as "skipped" by Jest, never as passed, so a green-looking
+ *    suite can never silently masquerade as database verification.
+ *
+ * The database is probed exactly once by global-setup.js before tests are
+ * collected; the probe result carries no credentials.
  */
-import { PrismaClient } from '@prisma/client';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { PrismaClient } from '@prisma/client';
+import { runSeed } from '../../prisma/seed';
+
+interface ProbeResult {
+  probedAt?: string;
+  required?: boolean;
+  up?: boolean;
+  error?: string | null;
+  endpoint?: string | null;
+}
+
+const REQUIRED = /^(1|true|yes|on)$/i.test(
+  process.env.RIDEPPY_DB_REQUIRED ?? '',
+);
+
+function readProbe(): ProbeResult {
+  const probeFile = join(__dirname, 'db-probe.json');
+  if (!existsSync(probeFile)) {
+    return {
+      probedAt: undefined,
+      up: false,
+      error: 'db-probe.json missing — test/db/global-setup.js did not run',
+    };
+  }
+  return JSON.parse(readFileSync(probeFile, 'utf8')) as ProbeResult;
+}
+
+const probe = readProbe();
+const dbUp = probe.up === true;
+
+/**
+ * Test registration:
+ * - database up                       -> run every test for real;
+ * - database down + REQUIRED          -> run every test (each fails
+ *   explicitly via requireDbUp());
+ * - database down + not required      -> native `it.skip` (visible skips).
+ */
+const itDb: typeof it = dbUp || REQUIRED ? it : it.skip;
+
+/** Throws the explicit REQUIRED-mode failure when the database is down. */
+function requireDbUp(): void {
+  if (!dbUp) {
+    throw new Error(
+      'EXPLICIT FAILURE — database verification is REQUIRED ' +
+        `(RIDEPPY_DB_REQUIRED=${process.env.RIDEPPY_DB_REQUIRED ?? '1'}) but ` +
+        `the database is unreachable` +
+        (probe.error ? `: ${probe.error}` : '') +
+        '. Start PostgreSQL (e.g. net start postgresql-x64-18), verify ' +
+        'DATABASE_URL in apps/api/.env, then re-run. Skipped tests are ' +
+        'never counted as database verification.',
+    );
+  }
+}
 
 const prisma = new PrismaClient();
 
-const itIfDb = (name: string, fn: () => Promise<void>): void =>
-  it(name, async () => {
-    const up = await prisma.$queryRaw`SELECT 1`
-      .then(() => true)
-      .catch(() => false);
-    if (!up) {
-      console.warn(`SKIP (database unreachable): ${name}`);
-      return;
-    }
-    await fn();
+/** Row counts used to prove seed idempotency. */
+async function snapshotCounts(): Promise<Record<string, number>> {
+  const [users, customers, drivers, vehicles, rides, payments] =
+    await Promise.all([
+      prisma.user.count(),
+      prisma.customer.count(),
+      prisma.driver.count(),
+      prisma.vehicle.count(),
+      prisma.ride.count(),
+      prisma.payment.count(),
+    ]);
+  return { users, customers, drivers, vehicles, rides, payments };
+}
+
+describe('database integration (PostgreSQL 16/18 + PostGIS)', () => {
+  afterAll(async () => {
+    await prisma.$disconnect();
   });
 
-afterAll(async () => {
-  await prisma.$disconnect();
-});
+  // --- Gate self-check (ALWAYS runs, in every mode) ------------------------
 
-describe('database integration (PostgreSQL 16 + PostGIS)', () => {
-  itIfDb('has the postgis extension installed', async () => {
+  it('db-gate: probe ran and the verification mode is reported honestly', () => {
+    if (!probe.probedAt) {
+      throw new Error(
+        'db-probe.json is missing — test/db/global-setup.js did not run. ' +
+          'Execute the suite through test/jest-db.json ' +
+          '(pnpm --filter api test:db).',
+      );
+    }
+    // globalSetup must have observed the same RIDEPPY_DB_REQUIRED value.
+    expect(probe.required).toBe(REQUIRED);
+
+    console.info(
+      `[db-gate] mode=${REQUIRED ? 'REQUIRED' : 'optional'} ` +
+        `database=${dbUp ? 'up' : 'down'} endpoint=${probe.endpoint ?? 'n/a'}`,
+    );
+    if (REQUIRED && !dbUp) {
+      throw new Error(
+        'EXPLICIT FAILURE — RIDEPPY_DB_REQUIRED is set but the database ' +
+          `is unreachable${probe.error ? `: ${probe.error}` : ''}. This run ` +
+          'cannot count as database verification.',
+      );
+    }
+  });
+
+  // --- Real database integration (mode-gated) ------------------------------
+
+  itDb('has the postgis extension installed', async () => {
+    requireDbUp();
     const rows = await prisma.$queryRaw<{ installed: boolean }[]>`
       SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'postgis') AS installed
     `;
     expect(rows[0]?.installed).toBe(true);
   });
 
-  itIfDb(
-    'roundtrips a customer through the User 1:1 profile model',
-    async () => {
-      const phone = '+919812345678';
-      const user = await prisma.user.create({
-        data: {
-          phone,
-          fullName: 'Integration Test Rider',
-          role: 'CUSTOMER',
-          status: 'ACTIVE',
-          customer: { create: {} },
-        },
-        include: { customer: true },
-      });
+  itDb('roundtrips a customer through the User 1:1 profile model', async () => {
+    requireDbUp();
+    const phone = '+919812345678';
+    const user = await prisma.user.create({
+      data: {
+        phone,
+        fullName: 'Integration Test Rider',
+        role: 'CUSTOMER',
+        status: 'ACTIVE',
+        customer: { create: {} },
+      },
+      include: { customer: true },
+    });
 
-      expect(user.phone).toBe(phone);
-      expect(user.customer).not.toBeNull();
+    expect(user.phone).toBe(phone);
+    expect(user.customer).not.toBeNull();
 
-      const fetched = await prisma.customer.findUnique({
-        where: { userId: user.id },
-        include: { user: true },
-      });
-      expect(fetched?.user.fullName).toBe('Integration Test Rider');
+    const fetched = await prisma.customer.findUnique({
+      where: { userId: user.id },
+      include: { user: true },
+    });
+    expect(fetched?.user.fullName).toBe('Integration Test Rider');
 
-      // Cleanup (integration fixtures only).
-      await prisma.user.delete({ where: { id: user.id } });
-      expect(await prisma.customer.count({ where: { userId: user.id } })).toBe(
-        0,
-      );
-    },
-  );
+    // Cleanup (integration fixtures only).
+    await prisma.user.delete({ where: { id: user.id } });
+    expect(await prisma.customer.count({ where: { userId: user.id } })).toBe(0);
+  });
 
-  itIfDb('enforces the unique phone constraint', async () => {
+  itDb('enforces the unique phone constraint', async () => {
+    requireDbUp();
     const phone = '+919812345679';
     await prisma.user.create({ data: { phone, fullName: 'First' } });
     await expect(
@@ -76,9 +168,22 @@ describe('database integration (PostgreSQL 16 + PostGIS)', () => {
     await prisma.user.deleteMany({ where: { phone } });
   });
 
-  itIfDb(
+  itDb('is idempotent: seeding twice leaves identical row counts', async () => {
+    requireDbUp();
+    await runSeed(prisma);
+    const first = await snapshotCounts();
+    await runSeed(prisma);
+    const second = await snapshotCounts();
+    expect(second).toEqual(first);
+    // And the seed actually seeded something:
+    expect(first.users).toBeGreaterThanOrEqual(4);
+    expect(first.payments).toBeGreaterThanOrEqual(1);
+  });
+
+  itDb(
     'populates the GENERATED geography columns and GiST indexes',
     async () => {
+      requireDbUp();
       const customerId = await ensureCustomer();
       const ride = await prisma.ride.create({
         data: {
@@ -116,31 +221,31 @@ describe('database integration (PostgreSQL 16 + PostGIS)', () => {
       await prisma.ride.delete({ where: { id: ride.id } });
     },
   );
-  itIfDb(
-    'supports a ST_DWithin proximity query (raw SQL pattern)',
-    async () => {
-      const customerId = await ensureCustomer();
-      const ride = await prisma.ride.create({
-        data: {
-          customerId,
-          vehicleType: 'BIKE',
-          pickupLat: 12.9716,
-          pickupLng: 77.5946,
-          dropLat: 12.9352,
-          dropLng: 77.6245,
-          estimatedDistanceKm: 4.2,
-          baseFareMinor: 1500,
-          distanceFareMinor: 1050,
-          estimatedTotalMinor: 2550,
-          quotedAt: new Date(),
-          paymentMethod: 'CASH',
-        },
-      });
 
-      // MG Road Metro pickup must be found within 500 m of itself, and the
-      // query exercises the GiST index path (no seq-scan assertion possible
-      // on a tiny table, but the geometry math is verified).
-      const hits = await prisma.$queryRaw<{ id: string }[]>`
+  itDb('supports a ST_DWithin proximity query (raw SQL pattern)', async () => {
+    requireDbUp();
+    const customerId = await ensureCustomer();
+    const ride = await prisma.ride.create({
+      data: {
+        customerId,
+        vehicleType: 'BIKE',
+        pickupLat: 12.9716,
+        pickupLng: 77.5946,
+        dropLat: 12.9352,
+        dropLng: 77.6245,
+        estimatedDistanceKm: 4.2,
+        baseFareMinor: 1500,
+        distanceFareMinor: 1050,
+        estimatedTotalMinor: 2550,
+        quotedAt: new Date(),
+        paymentMethod: 'CASH',
+      },
+    });
+
+    // MG Road Metro pickup must be found within 500 m of itself, and the
+    // query exercises the GiST index path (no seq-scan assertion possible
+    // on a tiny table, but the geometry math is verified).
+    const hits = await prisma.$queryRaw<{ id: string }[]>`
       SELECT "id"::text FROM "rides"
       WHERE ST_DWithin(
         "pickupGeo",
@@ -148,13 +253,13 @@ describe('database integration (PostgreSQL 16 + PostGIS)', () => {
         500
       ) AND "id" = ${ride.id}::uuid
     `;
-      expect(hits).toHaveLength(1);
+    expect(hits).toHaveLength(1);
 
-      await prisma.ride.delete({ where: { id: ride.id } });
-    },
-  );
+    await prisma.ride.delete({ where: { id: ride.id } });
+  });
 
-  itIfDb('rejects a payment pointing at an unknown ride', async () => {
+  itDb('rejects a payment pointing at an unknown ride', async () => {
+    requireDbUp();
     const customerId = await ensureCustomer();
     await expect(
       prisma.payment.create({
@@ -171,22 +276,23 @@ describe('database integration (PostgreSQL 16 + PostGIS)', () => {
   });
 });
 
-/** Creates (or reuses) one integration-fixture customer; cleaned per test. */
+/** Creates (or reuses) one integration-fixture customer; cleaned per run. */
 let fixtureUserId: string | null = null;
 async function ensureCustomer(): Promise<string> {
-  if (!fixtureUserId) {
-    const user = await prisma.user.create({
-      data: {
-        phone: '+919800000001',
-        fullName: 'Geo Fixture Rider',
-        role: 'CUSTOMER',
-        status: 'ACTIVE',
-        customer: { create: {} },
-      },
-      include: { customer: true },
-    });
-    fixtureUserId = user.id;
-  }
+  // Upsert (not create) so a crashed previous run cannot wedge this suite.
+  const user = await prisma.user.upsert({
+    where: { phone: '+919800000001' },
+    update: {},
+    create: {
+      phone: '+919800000001',
+      fullName: 'Geo Fixture Rider',
+      role: 'CUSTOMER',
+      status: 'ACTIVE',
+      customer: { create: {} },
+    },
+    include: { customer: true },
+  });
+  fixtureUserId = user.id;
   const customer = await prisma.customer.findUniqueOrThrow({
     where: { userId: fixtureUserId },
   });

@@ -46,16 +46,31 @@ Verify: `http://127.0.0.1:3100/health` returns
 `{"service":"Rideppy API","status":"ok",...}`. The real database ping arrives
 with WP-5.
 
-## 5. Verify the toolchain
+## 5. Verify the toolchain — one command (WP-6)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify.ps1
+```
+
+Runs install → build → typecheck → lint → unit → e2e → repository hygiene →
+the full database gate (migrate, migrate-status, seed ×2, integration tests
+with `RIDEPPY_DB_REQUIRED=1`, live API boot + 27-check HTTP smoke). Add
+`-SkipInstall` to skip reinstall and `-SkipDb` for a toolchain-only run
+(the summary then states that NO database verification was performed).
+
+Individual steps, if you prefer them one by one:
 
 ```powershell
 corepack pnpm build
+corepack pnpm typecheck
 corepack pnpm lint
 corepack pnpm test
 corepack pnpm test:e2e
 ```
 
-All four must pass. GitHub Actions CI runs the same steps on every push.
+All must pass. GitHub Actions CI runs the same steps on every push (plus the
+database job on PostgreSQL 18 + PostGIS 3.6). See docs/VERIFICATION.md for
+the full verification matrix.
 
 ## 6. PostgreSQL + PostGIS (native Windows) — detailed steps arrive with WP-5
 

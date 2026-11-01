@@ -46,11 +46,12 @@ jobs:
         run: pnpm test:e2e
 
   database:
-    name: Database migrations + integration tests (PostGIS)
+    name: Database migrations + integration tests (PostgreSQL 18 + PostGIS)
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgis/postgis:16-3.4
+        # Same major versions as the Windows dev PC (PostgreSQL 18.x + PostGIS 3.6).
+        image: postgis/postgis:18-3.6
         env:
           POSTGRES_USER: rideppy
           POSTGRES_PASSWORD: rideppy
@@ -64,6 +65,9 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://rideppy:rideppy@localhost:5432/rideppy
+      # WP-6: CI database verification is REQUIRED — an unavailable database
+      # must fail this job, never silently skip the integration tests.
+      RIDEPPY_DB_REQUIRED: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,13 +88,19 @@ jobs:
       - name: Apply migrations
         run: pnpm --filter api exec prisma migrate deploy
 
+      - name: Migration status is up to date
+        run: pnpm --filter api exec prisma migrate status | grep -q 'up to date'
+
       - name: Seed development data
+        run: pnpm --filter api exec prisma db seed
+
+      - name: Seed idempotency (second run must succeed identically)
         run: pnpm --filter api exec prisma db seed
 
       - name: Build
         run: pnpm build
 
-      - name: Database integration tests
+      - name: Database integration tests (explicit-failure mode)
         run: pnpm --filter api test:db
 
       - name: Boot API and verify /health reports the database up

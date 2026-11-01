@@ -12,6 +12,9 @@ monorepo. Runs on **port 3100** (`PORT` env var).
 | `lint` | ESLint (auto-fix) |
 | `test` | Jest unit tests |
 | `test:e2e` | Jest e2e tests (`test/`) |
+| `test:db` | Database integration tests — two-mode gate, see below |
+| `db:migrate` | `prisma migrate deploy` |
+| `db:studio` | Prisma Studio GUI |
 
 ## Endpoints (Phase 0 so far)
 
@@ -24,7 +27,8 @@ monorepo. Runs on **port 3100** (`PORT` env var).
 
 ## Database (WP-5)
 
-- **Stack**: PostgreSQL 16 + PostGIS via Prisma 6 (`prisma` / `@prisma/client`, CJS-safe).
+- **Stack**: PostgreSQL 16/18 + PostGIS via Prisma 6 (`prisma` / `@prisma/client`, CJS-safe).
+  Verified on PostgreSQL 18.6 + PostGIS 3.6 (Windows).
 - **Schema**: `prisma/schema.prisma` — User → 1:1 Customer/Driver profiles,
   Vehicle, Ride (with `GENERATED ALWAYS AS geography(Point, 4326)` columns +
   GiST indexes), Payment; money is integer paise (`*Minor` Int columns).
@@ -43,7 +47,20 @@ monorepo. Runs on **port 3100** (`PORT` env var).
 | `pnpm --filter api db:migrate` | Apply migrations (`prisma migrate deploy`) |
 | `pnpm --filter api exec prisma db seed` | Idempotent demo data (upserts only) |
 | `pnpm --filter api db:studio` | Prisma Studio GUI |
-| `pnpm --filter api test:db` | Integration tests against a live DB (auto-skip when unreachable) |
+| `pnpm --filter api test:db` | Integration tests vs a live DB (two-mode gate) |
+| `node scripts/smoke.mjs` | Live HTTP gate vs a running API (27 checks) |
+| `scripts/verify.ps1` | Full Windows verification incl. database gate |
+
+### Database integration two-mode gate (WP-6)
+
+- Database **up** → all integration tests run for real (PostGIS extension,
+  1:1 profile roundtrip, unique constraints, GENERATED geography columns +
+  GiST indexes, `ST_DWithin`, payment FK, **seed idempotency**).
+- Database **down** + `RIDEPPY_DB_REQUIRED=1` (set by `scripts/verify.ps1`
+  and CI) → every test **fails explicitly**; skipped tests are never counted
+  as database verification.
+- Database **down** without the flag → tests register as **native
+  `skipped`** — visible in the Jest summary, never reported as passes.
 
 ## Shared contracts (WP-4)
 
