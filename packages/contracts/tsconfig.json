@@ -1,0 +1,15 @@
+{
+  "extends": "@rideppy/tsconfig/base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declarationMap": true,
+    "removeComments": false
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

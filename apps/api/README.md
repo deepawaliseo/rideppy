@@ -18,9 +18,16 @@ monorepo. Runs on **port 3100** (`PORT` env var).
 | Route | Description |
 |---|---|
 | `GET /` | Hello world (starter) |
-| `GET /health` | Service health JSON — DB ping arrives in WP-5 |
+| `GET /health` | Service health JSON (`HealthResponse` from `@rideppy/contracts`) — DB ping arrives in WP-5 |
 | `GET /docs` | Swagger UI (toggle via `SWAGGER_ENABLED`) |
 | `GET /docs-json` | OpenAPI 3 document |
+
+## Shared contracts (WP-4)
+
+All API payloads are typed by `@rideppy/contracts` (framework-independent
+TypeScript, built to `dist/` with declarations). Jest resolves the package to
+its TypeScript source via `moduleNameMapper`, so tests never depend on build
+order.
 
 ## Security & HTTP behavior (WP-3)
 
