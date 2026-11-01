@@ -1,79 +1,76 @@
-# Windows PowerShell setup — Phase 0
+# Windows 10 setup — Rideppy Phase 0 (native, no Docker/WSL2)
 
-## 1. Install prerequisites
+**Approved constraint:** the dev PC has ~8 GB RAM, so no Docker Desktop and no
+WSL2. PostgreSQL + PostGIS run natively on Windows. Mobile testing later uses a
+physical Android phone with Expo Go.
 
-Install Windows Subsystem for Linux 2, Docker Desktop with WSL2 integration, supported Node.js LTS, Git, Android Studio and VS Code. Restart if prompted. Ensure Android SDK and emulator are installed.
+## 1. Prerequisites
 
-Check in PowerShell:
+- Node.js 22 LTS (or newer), Git
+- pnpm 10.18.0 via corepack (pinned by root `package.json`)
 
 ```powershell
-wsl --status
-docker version
-docker compose version
 node --version
-npm --version
 git --version
+corepack enable
+corepack pnpm --version   # must print 10.18.0
 ```
 
-## 2. Extract this starter into your desired project directory
-
-Example: `C:\Projects\bike-taxi-platform`. Open PowerShell inside that folder.
+## 2. Install workspace dependencies
 
 ```powershell
-corepack enable
-corepack pnpm --version
+cd C:\Projects\rideppy-platform
+corepack pnpm install
+```
+
+## 3. Configure environment (never commit secrets)
+
+```powershell
 Copy-Item .env.example .env
 notepad .env
-# Replace BOTH password placeholders with the same strong local password.
-docker compose up -d
-docker compose ps
 ```
 
-If Corepack is unavailable with your Node installation, install Corepack according to current Node.js/pnpm guidance. Never use the placeholder database password in a networked deployment.
+Replace `CHANGE_ME_TO_A_STRONG_LOCAL_PASSWORD` with a strong local password in
+**both** lines. `PORT=3100` is the API port everywhere. `.env` is git-ignored —
+never commit it.
 
-## 3. Generate the four applications
-
-These official scaffold commands should be run **from the repository root**. Select TypeScript defaults. If the tool reports a non-empty directory, stop and inspect before retrying.
+## 4. Run the API
 
 ```powershell
-npx create-expo-app@latest apps/customer --template default
-npx create-expo-app@latest apps/driver --template default
-npx @nestjs/cli@latest new apps/api --package-manager pnpm --skip-git
-npx create-next-app@latest apps/admin --ts --eslint --tailwind --app --use-pnpm
+corepack pnpm --dir apps/api start:dev
 ```
 
-CLI flags/templates can change: verify the current prompts before proceeding. If generators create nested Git repositories or standalone lockfiles, remove those **only after reviewing them** and keep a single root lockfile. Ensure app package names are unique.
+Verify: `http://127.0.0.1:3100/health` returns
+`{"service":"Rideppy API","status":"ok",...}`. The real database ping arrives
+with WP-5.
+
+## 5. Verify the toolchain
 
 ```powershell
-pnpm install
+corepack pnpm build
+corepack pnpm lint
+corepack pnpm test
+corepack pnpm test:e2e
 ```
 
-## 4. Start apps
+All four must pass. GitHub Actions CI runs the same steps on every push.
 
-```powershell
-pnpm --dir apps/api start:dev
-pnpm --dir apps/admin dev
-pnpm --dir apps/customer start
-pnpm --dir apps/driver start
-```
+## 6. PostgreSQL + PostGIS (native Windows) — detailed steps arrive with WP-5
 
-Use four terminals. The mobile app's local API host differs for Android emulator (`10.0.2.2`), physical phones (LAN IP) and iOS; configure later with public Expo environment variables (never secrets). Expo Go is only for early screens; MapLibre/background GPS require custom development builds.
+Planned path: PostgreSQL 16 installer (EDB) → Stack Builder → PostGIS →
+create the `rideppy` role and database → Prisma migrate.
 
-## 5. Backend health endpoint (implement after NestJS generation)
+> Naming note: the standard database/role name is now **`rideppy`** (renamed
+> from `biketaxi` in WP-1). If you already created an empty `biketaxi` database
+> locally you may keep or drop it — WP-5 instructions will use `rideppy`.
 
-Create `apps/api/src/health.controller.ts`:
+If you ever want containers anyway, `compose.yaml` still works and now uses the
+`rideppy` names too (`pnpm infra:up`) — but the dev-PC standard is native.
 
-```ts
-import { Controller, Get } from '@nestjs/common';
-@Controller('health')
-export class HealthController {
-  @Get()
-  check() { return { status: 'ok', service: 'bike-taxi-api' }; }
-}
-```
+## 7. Deferred to later phases (do not scaffold now)
 
-Add `HealthController` to `controllers` in the generated `AppModule`, and configure port 4000 in `main.ts` if desired. Then verify `http://localhost:4000/health` returns HTTP 200.
-
-## 6. Verify before Phase 1
-
-See `docs/PHASE-0-CHECKLIST.md`. Do not enable real rides, real OTP, or payments in Phase 0.
+- `apps/customer`, `apps/driver` (Expo) — generated in their own phases
+- `apps/admin` (Next.js) — generated in its own phase
+- Swagger `/docs` and security middleware — WP-3
+- Redis/BullMQ, Socket.IO — ride-phase work
+- Physical-phone testing — mobile phases
