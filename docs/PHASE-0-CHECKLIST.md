@@ -52,26 +52,50 @@ mobile testing on a physical Android phone.
 - [x] Contracts build to CJS `dist/` with declarations + `exports` map; framework-independent
 - [x] `typecheck` script in every package; Turbo + CI run it
 
-## WP-5 — PostgreSQL + PostGIS + Prisma (native Windows, no Docker)
-- [ ] (Windows) PostgreSQL 16 service running; `psql` on PATH — docs/DATABASE-SETUP.md §1
-- [ ] (Windows) PostGIS installed (Stack Builder) and `CREATE EXTENSION postgis` verified — §2
-- [ ] (Windows) `rideppy` role + database created with least privilege — §3
+## WP-5 — PostgreSQL + PostGIS + Prisma (native Windows, no Docker) ✅
+- [x] (Windows) PostgreSQL running natively — **verified on PostgreSQL 18.6 +
+      PostGIS 3.6** (16 not forced; both supported); `psql` on PATH — docs/DATABASE-SETUP.md §1
+- [x] (Windows) PostGIS installed and `CREATE EXTENSION postgis` verified — §2
+- [x] (Windows) `rideppy` role + database created with least privilege — §3
 - [x] Prisma 6.19 installed (`prisma` + `@prisma/client`, CJS-safe for NestJS 11 / Node 22);
       `schema.prisma` on `postgresql` provider — User/Customer/Driver/Vehicle/Ride/Payment
-- [x] Versioned migration `20261101000000_init` applied; Prisma Studio opens (`pnpm --filter api db:studio`)
+- [x] Versioned migration `20261101000000_init` applied on Windows; Prisma Studio opens
 - [x] PostGIS in migration: `CREATE EXTENSION`, `geography(Point, 4326)` GENERATED
-      columns on `rides`, GiST indexes; verified against real PostGIS 3.6.2 (PGlite)
+      columns on `rides`, GiST indexes
 - [x] Raw-SQL geo-query pattern documented (docs/DATABASE-SETUP.md §7); Prisma models geo
       columns as `Unsupported` so they are never dropped by future migrations
 - [x] `/health` performs a real `SELECT 1` DB ping and returns 503 + error envelope when
-      the DB is down (boot-without-DB verified in sandbox; DB-up verified in CI + Windows)
+      the DB is down — **Windows: HTTP 200 with `"database":"up"` when healthy** (commit 3c5ed35)
 - [x] Money stored as integer paise (Int columns, `*Minor`); seed script idempotent (upserts)
-- [ ] (Windows) Integration suite against live DB: `pnpm --filter api test:db` — §6
+- [x] (Windows) Integration suite against live DB passed — 48 unit + 8 e2e + 6 real-database
+      integration tests, migration + seed applied (WP-5 evidence, commit 3c5ed35)
 
-## WP-6 — Final gate (on the Windows PC)
-- [ ] `pnpm install → build → lint → test → test:e2e` all green locally
-- [ ] API boots on `127.0.0.1:3100`; `/health` returns ok; `/docs` renders
-- [ ] No secrets committed anywhere; `.env` exists only on local machines
-- [ ] GitHub Actions CI green on the pushed branch
+## WP-6 — Final integration gate
+- [x] Repeatable Windows verification script `scripts/verify.ps1`: preflight → install →
+      build → typecheck → lint → unit → e2e → hygiene → database gate (migrate deploy,
+      `migrate status` up-to-date, seed ×2, integration tests, live API smoke) — docs/VERIFICATION.md §1
+- [x] DB integration tests are an honest two-mode gate: `RIDEPPY_DB_REQUIRED=1` + unreachable
+      DB → **explicit failures, exit 1**; without the flag → **native `skipped`**, never counted
+      as passes; verify.ps1 additionally fails on any skipped test in required mode
+- [x] Seed idempotency proven in-test (`runSeed()` twice → identical row counts) and by
+      verify.ps1 + CI seeding twice
+- [x] Live HTTP gate `scripts/smoke.mjs` (27 checks): `/health` contract shape, `/docs` Swagger,
+      `/docs-json` OpenAPI, exact 404/503 `ApiErrorResponse` envelopes, helmet header;
+      `--expect-db-down` drives the 503 drill
+- [x] Repository hygiene gate `scripts/check-repo-hygiene.mjs`: tracked build artifacts,
+      tracked `.env` files, private keys, tokens, credential URLs (localhost/reserved-TLD
+      fixtures allowed as info, real hosts fail)
+- [x] CI `database` job upgraded to **postgis/postgis:18-3.6** (PG 18 + PostGIS 3.6, matching
+      the Windows PC) with `RIDEPPY_DB_REQUIRED=1` — an unavailable database fails CI, never skips
+- [x] Sandbox verification green: build/typecheck/lint, 39 unit + 8 e2e, gate semantics
+      (1 passed + 7 skipped unflagged; 8 failed exit 1 flagged), 503 drill smoke 27/27,
+      hygiene 0 failures — see docs/VERIFICATION.md §5
+- [x] Docs: verification matrix + Windows commands (docs/VERIFICATION.md), DATABASE-SETUP.md
+      PostgreSQL 16/18 wording, SETUP-WINDOWS.md verify.ps1 usage, api README test:db semantics
+- [ ] (Windows) Run `powershell -ExecutionPolicy Bypass -File scripts\verify.ps1` end-to-end
+      and record the summary as the Phase 0 completion evidence
+- [ ] (Windows) GitHub Actions CI green on the pushed WP-6 branch
 
-**Phase 0 is NOT complete until every box above is evidenced.**
+**Phase 0 is NOT complete until every box above is evidenced — in particular,
+a `scripts\verify.ps1` run with database verification PERFORMED (no `-SkipDb`),
+whose summary names every step PASS.**

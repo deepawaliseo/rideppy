@@ -3,8 +3,10 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".int-spec.ts$",
+  "globalSetup": "<rootDir>/db/global-setup.js",
+  "globalTeardown": "<rootDir>/db/global-teardown.js",
   "moduleNameMapper": {
-    "^@rideppy/contracts$": "<rootDir>/../../packages/contracts/src/index.ts"
+    "^@rideppy/contracts$": "<rootDir>/../../../packages/contracts/src/index.ts"
   },
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"

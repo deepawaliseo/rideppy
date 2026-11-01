@@ -5,6 +5,8 @@
  *   demo UUIDs), so it can be re-run any number of times.
  * - Never deletes data, contains no credentials, and only creates clearly
  *   fictional demo records (+91 90000 000xx numbers).
+ * - WP-6: the seeding logic is exported as `runSeed()` so the database
+ *   integration suite can prove idempotency (two runs → identical counts).
  *
  * Run: pnpm --filter api exec prisma db seed
  */
@@ -37,9 +39,9 @@ const DEMO = {
   rideRequested: '44444444-4444-4444-8444-000000000002',
 };
 
-async function main(): Promise<void> {
+export async function runSeed(client: PrismaClient = prisma): Promise<void> {
   // --- Customers ------------------------------------------------------------
-  const customerAUser = await prisma.user.upsert({
+  const customerAUser = await client.user.upsert({
     where: { phone: '+919000000001' },
     update: {},
     create: {
@@ -51,13 +53,13 @@ async function main(): Promise<void> {
       status: 'ACTIVE',
     },
   });
-  await prisma.customer.upsert({
+  await client.customer.upsert({
     where: { userId: customerAUser.id },
     update: {},
     create: { id: DEMO.customerA.customerId, userId: customerAUser.id },
   });
 
-  const customerBUser = await prisma.user.upsert({
+  const customerBUser = await client.user.upsert({
     where: { phone: '+919000000002' },
     update: {},
     create: {
@@ -68,14 +70,14 @@ async function main(): Promise<void> {
       status: 'ACTIVE',
     },
   });
-  await prisma.customer.upsert({
+  await client.customer.upsert({
     where: { userId: customerBUser.id },
     update: {},
     create: { id: DEMO.customerB.customerId, userId: customerBUser.id },
   });
 
   // --- Drivers + vehicles ---------------------------------------------------
-  const driverAUser = await prisma.user.upsert({
+  const driverAUser = await client.user.upsert({
     where: { phone: '+919000000011' },
     update: {},
     create: {
@@ -86,7 +88,7 @@ async function main(): Promise<void> {
       status: 'ACTIVE',
     },
   });
-  const driverA = await prisma.driver.upsert({
+  const driverA = await client.driver.upsert({
     where: { userId: driverAUser.id },
     update: {},
     create: {
@@ -100,7 +102,7 @@ async function main(): Promise<void> {
       completedTrips: 1204,
     },
   });
-  await prisma.vehicle.upsert({
+  await client.vehicle.upsert({
     where: { registrationNumber: 'KA 05 JK 1234' },
     update: {},
     create: {
@@ -116,7 +118,7 @@ async function main(): Promise<void> {
     },
   });
 
-  const driverBUser = await prisma.user.upsert({
+  const driverBUser = await client.user.upsert({
     where: { phone: '+919000000012' },
     update: {},
     create: {
@@ -127,7 +129,7 @@ async function main(): Promise<void> {
       status: 'ACTIVE',
     },
   });
-  const driverB = await prisma.driver.upsert({
+  const driverB = await client.driver.upsert({
     where: { userId: driverBUser.id },
     update: {},
     create: {
@@ -137,7 +139,7 @@ async function main(): Promise<void> {
       isOnline: false,
     },
   });
-  await prisma.vehicle.upsert({
+  await client.vehicle.upsert({
     where: { registrationNumber: 'KA 01 AB 7788' },
     update: {},
     create: {
@@ -164,7 +166,7 @@ async function main(): Promise<void> {
     FARE_RULES.platformFeePerRideCapMinor,
   );
 
-  const completedRide = await prisma.ride.upsert({
+  const completedRide = await client.ride.upsert({
     where: { id: DEMO.rideCompleted },
     update: {},
     create: {
@@ -196,7 +198,7 @@ async function main(): Promise<void> {
       completedAt: new Date('2026-11-01T10:21:00.000Z'),
     },
   });
-  await prisma.payment.upsert({
+  await client.payment.upsert({
     where: { rideId: completedRide.id },
     update: {},
     create: {
@@ -212,7 +214,7 @@ async function main(): Promise<void> {
   });
 
   // --- One open ride in SEARCHING (dispatch demo) ---------------------------
-  await prisma.ride.upsert({
+  await client.ride.upsert({
     where: { id: DEMO.rideRequested },
     update: {},
     create: {
@@ -237,14 +239,20 @@ async function main(): Promise<void> {
     },
   });
 
-  console.log('Seed complete: 4 users, 2 customers, 2 drivers, 2 vehicles, 2 rides, 1 payment.');
+  console.log(
+    'Seed complete: 4 users, 2 customers, 2 drivers, 2 vehicles, 2 rides, 1 payment.',
+  );
 }
 
-main()
-  .catch((error) => {
-    console.error('Seed failed:', error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+/* CLI entry — `prisma db seed` executes this file directly. When the seed is
+ * imported by the integration suite, the module is only loaded, not run. */
+if (require.main === module) {
+  runSeed()
+    .catch((error) => {
+      console.error('Seed failed:', error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
